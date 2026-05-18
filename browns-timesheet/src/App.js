@@ -350,6 +350,12 @@ function Setup({ employees, sites, plots, prices, getPrice, notify, reload }) {
     notify(num + ' added'); reload()
   }
 
+  const deletePlot = async (plotId, plotNum) => {
+    await supabase.from('stage_claims').delete().eq('plot_id', plotId)
+    await supabase.from('plots').delete().eq('id', plotId)
+    notify(plotNum + ' removed'); reload()
+  }
+
   const parsePaste = (siteId, text) => {
     const lines = text.trim().split('\n').filter(l => l.trim())
     const parsed = []
@@ -392,11 +398,12 @@ function Setup({ employees, sites, plots, prices, getPrice, notify, reload }) {
 
   const savePrices = async siteId => {
     setSavingPrices(prev => ({ ...prev, [siteId]: true }))
+    await supabase.from('site_prices').delete().eq('site_id', siteId)
     const rows = []
     HOUSE_TYPES.forEach(ht => STAGES.forEach(stage => {
       rows.push({ site_id: siteId, house_type: ht, stage, price: parseFloat(getLocalPrice(siteId, ht, stage)) || 0 })
     }))
-    await supabase.from('site_prices').upsert(rows, { onConflict: 'site_id,house_type,stage' })
+    await supabase.from('site_prices').insert(rows)
     setSavingPrices(prev => ({ ...prev, [siteId]: false }))
     notify('Prices saved ✓'); reload()
   }
@@ -476,7 +483,13 @@ function Setup({ employees, sites, plots, prices, getPrice, notify, reload }) {
           <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 8 }}>Plots ({sitePlots.length})</div>
           {sitePlots.length > 0 && (
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
-              {sitePlots.map(p => <span key={p.id} style={{ background: '#f0f0f0', borderRadius: 5, padding: '3px 8px', fontSize: 11 }}>{p.plot_number} · {p.house_type}</span>)}
+              {sitePlots.map(p => (
+                <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 4, background: '#f0f0f0', borderRadius: 5, padding: '3px 8px', fontSize: 11 }}>
+                  <span>{p.plot_number} · {p.house_type}</span>
+                  <button onClick={() => deletePlot(p.id, p.plot_number)}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#aaa', fontSize: 13, lineHeight: 1, padding: '0 2px', fontFamily: 'inherit' }}>×</button>
+                </div>
+              ))}
             </div>
           )}
 
