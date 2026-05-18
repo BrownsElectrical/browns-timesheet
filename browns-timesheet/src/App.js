@@ -378,11 +378,27 @@ function Setup({ employees, sites, plots, prices, getPrice, notify, reload }) {
     notify(`${toInsert.length} plots added`); reload()
   }
 
-  const updatePrice = async (siteId, houseType, stage, val) => {
-    await supabase.from('site_prices').upsert(
-      { site_id: siteId, house_type: houseType, stage, price: parseFloat(val) || 0 },
-      { onConflict: 'site_id,house_type,stage' }
-    )
+  const [localPrices, setLocalPrices] = useState({})
+  const [savingPrices, setSavingPrices] = useState({})
+
+  const setLocalPrice = (siteId, houseType, stage, val) => {
+    setLocalPrices(prev => ({ ...prev, [`${siteId}|${houseType}|${stage}`]: val }))
+  }
+
+  const getLocalPrice = (siteId, houseType, stage) => {
+    const key = `${siteId}|${houseType}|${stage}`
+    return localPrices[key] !== undefined ? localPrices[key] : getPrice(siteId, houseType, stage)
+  }
+
+  const savePrices = async siteId => {
+    setSavingPrices(prev => ({ ...prev, [siteId]: true }))
+    const rows = []
+    HOUSE_TYPES.forEach(ht => STAGES.forEach(stage => {
+      rows.push({ site_id: siteId, house_type: ht, stage, price: parseFloat(getLocalPrice(siteId, ht, stage)) || 0 })
+    }))
+    await supabase.from('site_prices').upsert(rows, { onConflict: 'site_id,house_type,stage' })
+    setSavingPrices(prev => ({ ...prev, [siteId]: false }))
+    notify('Prices saved ✓'); reload()
   }
 
   const hasPrices = siteId => prices.some(p => p.site_id === siteId && p.price > 0)
@@ -440,16 +456,21 @@ function Setup({ employees, sites, plots, prices, getPrice, notify, reload }) {
                     <td style={{ padding: '3px 8px 3px 0', whiteSpace: 'nowrap', fontWeight: 500 }}>{type}</td>
                     {STAGES.map(stage => (
                       <td key={stage} style={{ padding: '3px 3px' }}>
-                        <input type="number" defaultValue={getPrice(site.id, type, stage)} min={0}
+                        <input type="number" value={getLocalPrice(site.id, type, stage)} min={0}
                           style={{ width: 62, padding: '4px 6px', border: '1px solid #ddd', borderRadius: 6, fontSize: 12, textAlign: 'center' }}
-                          onBlur={e => updatePrice(site.id, type, stage, e.target.value)} />
+                          onChange={e => setLocalPrice(site.id, type, stage, e.target.value)} />
                       </td>
                     ))}
                   </tr>
                 ))}</tbody>
               </table>
             </div>
-            <div style={{ fontSize: 11, color: '#888', marginTop: 6 }}>Enter 0 for stages that don't apply. Changes save when you click out of a field.</div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 10 }}>
+              <div style={{ fontSize: 11, color: '#888' }}>Enter 0 for stages that don't apply to that house type.</div>
+              <button style={{ ...S.btn, ...S.btnGreen }} onClick={() => savePrices(site.id)} disabled={savingPrices[site.id]}>
+                {savingPrices[site.id] ? 'Saving...' : 'Save prices'}
+              </button>
+            </div>
           </div>
 
           <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 8 }}>Plots ({sitePlots.length})</div>
